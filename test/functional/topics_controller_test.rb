@@ -1,4 +1,4 @@
-require 'test_helper'
+require File.dirname(__FILE__) + '/../test_helper'
 
 class TopicsControllerTest < ActionController::TestCase
   all_fixtures
@@ -15,11 +15,10 @@ class TopicsControllerTest < ActionController::TestCase
   end
 
   def test_should_show_topic_as_rss
-    content_type 'application/rss+xml'
     get :show, :forum_id => forums(:rails).id, :id => topics(:pdi).id, :format => 'rss'
     assert_response :success
   end
-
+  
   def test_should_show_topic_as_xml
     content_type 'application/xml'
     get :show, :forum_id => forums(:rails).id, :id => topics(:pdi).id, :format => 'xml'
@@ -36,7 +35,7 @@ class TopicsControllerTest < ActionController::TestCase
     login_as :joe
     assert ! users(:joe).admin?
     assert ! users(:joe).moderator_of?(forums(:rails))
-    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah', :sticky => "1", :locked => "1", :sb_posts_attributes => { "0" => { :body => 'foo' } } }
+    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah', :sticky => "1", :locked => "1", :body => 'foo' }
     assert assigns(:topic)
     assert ! assigns(:topic).sticky?
     assert ! assigns(:topic).locked?
@@ -46,15 +45,15 @@ class TopicsControllerTest < ActionController::TestCase
     login_as :sam
     assert ! users(:sam).admin?
     assert users(:sam).moderator_of?(forums(:rails))
-    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah', :sticky => "1", :locked => "1",  :sb_posts_attributes => { "0" => { :body => 'foo' } } }
+    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah', :sticky => "1", :locked => "1", :body => 'foo' }
     assert assigns(:topic)
     assert assigns(:topic).sticky?
     assert assigns(:topic).locked?
   end
-
+    
   def test_should_allow_admin_to_sticky_and_lock
     login_as :admin
-    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah2', :sticky => "1", :locked => "1", :sb_posts_attributes => { "0" => { :body => 'foo' } } }
+    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah2', :sticky => "1", :locked => "1", :body => 'foo' }
     assert assigns(:topic).sticky?
     assert assigns(:topic).locked?
   end
@@ -64,29 +63,31 @@ class TopicsControllerTest < ActionController::TestCase
   def test_should_not_create_topic_without_body
     counts = lambda { [Topic.count, SbPost.count] }
     old = counts.call
-
+    
     login_as :aaron
-
-    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah', :sb_posts_attributes => { "0" => { :body => '' } } }
+    
+    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah' }
     assert assigns(:topic)
     assert assigns(:post)
     # both of these should be new records if the save fails so that the view can
     # render accordingly
     assert assigns(:topic).new_record?
     assert assigns(:post).new_record?
+    
+    assert_equal old, counts.call
   end
 
   def test_should_create_topic
     counts = lambda { [Topic.count, SbPost.count, forums(:rails).topics_count, forums(:rails).sb_posts_count,  users(:aaron).sb_posts_count] }
     old = counts.call
-
+    
     login_as :aaron
-    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah', :sb_posts_attributes => { "0" => { :body => 'foo' } } }, :tag_list => 'tag1, tag2'
+    post :create, :forum_id => forums(:rails).id, :topic => { :title => 'blah', :body => 'foo' }, :tag_list => 'tag1, tag2'
     assert assigns(:topic)
     assert assigns(:post)
     assert_redirected_to forum_topic_path(forums(:rails), assigns(:topic))
-    [forums(:rails), users(:aaron)].each(&:reload)
-
+    [forums(:rails), users(:aaron)].each &:reload
+  
     assert_equal old.collect { |n| n + 1}, counts.call
     assert_equal ['tag1', 'tag2'], Topic.find(assigns(:topic).id).tag_list
   end
@@ -95,7 +96,7 @@ class TopicsControllerTest < ActionController::TestCase
   def test_should_delete_topic
     counts = lambda { [SbPost.count, forums(:rails).topics_count, forums(:rails).sb_posts_count] }
     old = counts.call
-
+    
     login_as :admin
     delete :destroy, :forum_id => forums(:rails).id, :id => topics(:ponies).id
     assert_redirected_to forum_path(forums(:rails))
@@ -148,14 +149,14 @@ class TopicsControllerTest < ActionController::TestCase
     get :show, :forum_id => forums(:rails).id, :id => topics(:pdi).id
     assert_response :success
     assert_equal topics(:pdi), assigns(:topic)
-    assert_equal [sb_posts(:pdi), sb_posts(:pdi_reply), sb_posts(:pdi_rebuttal)], assigns(:posts)
+    assert_models_equal [sb_posts(:pdi), sb_posts(:pdi_reply), sb_posts(:pdi_rebuttal)], assigns(:posts)
   end
 
   def test_should_show_other_post
     get :show, :forum_id => forums(:rails).id, :id => topics(:ponies).id
     assert_response :success
     assert_equal topics(:ponies), assigns(:topic)
-    assert_equal [sb_posts(:ponies)], assigns(:posts)
+    assert_models_equal [sb_posts(:ponies)], assigns(:posts)
   end
 
   def test_should_get_edit
@@ -163,7 +164,7 @@ class TopicsControllerTest < ActionController::TestCase
     get :edit, :forum_id => 1, :id => 1
     assert_response :success
   end
-
+  
   def test_should_update_own_post
     login_as :sam
     put :update, :forum_id => forums(:rails).id, :id => topics(:ponies).id, :topic => { }, :tag_list => 'tagX, tagY'
@@ -174,7 +175,7 @@ class TopicsControllerTest < ActionController::TestCase
 
   def test_should_not_update_user_id_of_own_post
     login_as :sam
-    put :update, :forum_id => forums(:rails).id, :id => topics(:ponies).id, :topic => { :user_id => users(:aaron).id }
+    put :update, :forum_id => forums(:rails).id, :id => topics(:ponies).id, :topic => { :user_id => 32 }
     assert_redirected_to forum_topic_path(forums(:rails), assigns(:topic))
     assert_equal users(:sam).id, sb_posts(:ponies).reload.user_id
   end

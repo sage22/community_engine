@@ -1,6 +1,6 @@
 class PagesController < BaseController
-  uses_tiny_mce do
-    {:only => [:new, :edit, :update, :create ], :options => configatron.default_mce_options}
+  uses_tiny_mce(:only => [:new, :edit, :update, :create ]) do
+    AppConfig.default_mce_options
   end
 
   cache_sweeper :page_sweeper, :only => [:create, :update, :destroy]
@@ -8,13 +8,13 @@ class PagesController < BaseController
 
   def cache_action?
     !logged_in? && controller_name.eql?('pages')
-  end
+  end 
 
   before_filter :login_required, :only => [:index, :new, :edit, :update, :destroy, :create, :preview]
   before_filter :require_moderator, :only => [:index, :new, :edit, :update, :destroy, :create, :preview]
 
   def index
-    @pages = Page.unscoped.order('created_at DESC').page(params[:page])
+    @pages = Page.find_without_published_as(:all, :order => 'created_at DESC')
   end
 
   def preview
@@ -26,7 +26,7 @@ class PagesController < BaseController
     @page = Page.live.find(params[:id])
     unless logged_in? || @page.page_public
       flash[:error] = :page_not_public_warning.l
-      redirect_to :controller => 'sessions', :action => 'new'
+      redirect_to :controller => 'sessions', :action => 'new'      
     end
   rescue
     flash[:error] = :page_not_found.l
@@ -59,7 +59,7 @@ class PagesController < BaseController
   end
 
   private
-
+  
   def require_moderator
     @page ||= Page.find(params[:id]) if params[:id]
     unless admin? || moderator?

@@ -4,10 +4,6 @@ class MessagesController < BaseController
   before_filter :require_ownership_or_moderator, :except => [:auto_complete_for_username]
 
   skip_before_filter :verify_authenticity_token, :only => [:auto_complete_for_username]
-
-  uses_tiny_mce do
-    {:options => configatron.default_mce_options}
-  end
   
   def auto_complete_for_username
     @users = User.find(:all, :conditions => [ 'LOWER(login) LIKE ?', '%' + (params[:message][:to]) + '%' ])
@@ -16,14 +12,14 @@ class MessagesController < BaseController
     
   def index
     if params[:mailbox] == "sent"
-      @messages = @user.sent_messages.page(params[:page]).per(20)
+      @messages = @user.sent_messages.find(:all, :page => {:current => params[:page], :size => 20})
     else
-      @messages = @user.message_threads_as_recipient.order('updated_at DESC').page(params[:page]).per(20)
+      @messages = @user.message_threads_as_recipient.find(:all, :page => {:current => params[:page], :size => 20}, :order => 'updated_at DESC')
     end
   end
   
   def show
-    @message = Message.read(params[:id], @user)
+    @message = Message.read(params[:id], current_user)
     @message_thread = MessageThread.for(@message, (admin? ? @message.recipient : current_user ))
     @reply = Message.new_reply(@user, @message_thread, params)    
   end
@@ -45,8 +41,8 @@ class MessagesController < BaseController
       @message.valid?
       render :action => :new and return
     else
-      @message = Message.new(params[:message])
-      @message.recipient= User.where('lower(login) = ?', params[:message][:to].strip.downcase).first
+      @message = Message.new(params[:message])          
+      @message.recipient = User.find_by_login(params[:message][:to].strip)
       @message.sender = @user
       unless @message.valid?
         render :action => :new and return        

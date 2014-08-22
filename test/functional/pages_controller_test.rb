@@ -1,7 +1,7 @@
-require 'test_helper'
+require File.dirname(__FILE__) + '/../test_helper'
 
 class PagesControllerTest < ActionController::TestCase
-  fixtures :all
+  fixtures :pages, :users, :roles
 
   def test_should_get_index
     login_as :admin
@@ -69,7 +69,7 @@ class PagesControllerTest < ActionController::TestCase
     login_as :admin
     put :update, :id => pages(:custom_page).id, :page => { :title => nil }
     assert_response :success
-    assert assigns(:page).errors[:title]
+    assert assigns(:page).errors.on(:title)
   end
   
   def test_should_destroy_page

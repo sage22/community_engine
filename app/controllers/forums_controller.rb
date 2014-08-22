@@ -1,16 +1,17 @@
 class ForumsController < BaseController
-  before_filter :admin_required, :except => [:index, :show]
+  before_filter :login_required, :except => [:index, :show]
   before_filter :find_or_initialize_forum
+  helper :application
 
-  uses_tiny_mce do    
-    {:options => configatron.default_mce_options}
+  uses_tiny_mce do
+    AppConfig.default_mce_options
   end
   
   def index
     @forums = Forum.find(:all, :order => "position")
     respond_to do |format|
       format.html
-      format.xml { render :xml => @forums }
+      format.xml { render :xml => @forums.to_xml }
     end
   end
 
@@ -20,16 +21,22 @@ class ForumsController < BaseController
         # keep track of when we last viewed this forum for activity indicators
         (session[:forums] ||= {})[@forum.id] = Time.now.utc if logged_in?
 
-        @topics = @forum.topics.includes(:replied_by_user).order('sticky DESC, replied_at DESC').page(params[:page]).per(20)
+        @topics = @forum.topics.find(:all, 
+          :page => {:size => 20, :current => params[:page]}, 
+          :include => :replied_by_user, 
+          :order => 'sticky DESC, replied_at DESC')
       end
       
       format.xml do
-        render :xml => @forum
+        render :xml => @forum.to_xml
       end
     end
   end
+
+  # new renders new.rhtml
   
   def create
+    @forum.attributes = params[:forum]
     @forum.tag_list = params[:tag_list] || ''
     @forum.save!
     respond_to do |format|
@@ -39,8 +46,9 @@ class ForumsController < BaseController
   end
 
   def update
+    @forum.attributes = params[:forum]
     @forum.tag_list = params[:tag_list] || ''
-    @forum.update_attributes!(params[:forum])
+    @forum.save!
     respond_to do |format|
       format.html { redirect_to forums_path }
       format.xml  { head 200 }
@@ -57,8 +65,11 @@ class ForumsController < BaseController
   
   protected
     def find_or_initialize_forum
-      @forum = params[:id] ? Forum.find(params[:id]) : Forum.new(params[:forum])
+      @forum = params[:id] ? Forum.find(params[:id]) : Forum.new
     end
-    
-    
+
+  #overide in your app
+  def authorized?
+    current_user.admin?
+  end
 end

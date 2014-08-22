@@ -1,4 +1,4 @@
-require 'test_helper'
+require File.dirname(__FILE__) + '/../test_helper'
 
 class EventTest < ActiveSupport::TestCase
   
@@ -8,7 +8,7 @@ class EventTest < ActiveSupport::TestCase
     assert_no_difference Event, :count do
       u = Event.new(valid_event_attributes.except(:name))
       u.save
-      assert u.errors[:name]
+      assert u.errors.on(:name)
     end    
   end
 
@@ -16,7 +16,7 @@ class EventTest < ActiveSupport::TestCase
     assert_no_difference Event, :count do
       u = Event.new(valid_event_attributes.except(:start_time))
       u.save
-      assert u.errors[:start_time]
+      assert u.errors.on(:start_time)
     end    
   end
   
@@ -24,7 +24,7 @@ class EventTest < ActiveSupport::TestCase
     assert_no_difference Event, :count do
       u = Event.new(valid_event_attributes.except(:user))
       u.save
-      assert u.errors[:user]
+      assert u.errors.on(:user)
     end    
   end  
   
@@ -32,7 +32,7 @@ class EventTest < ActiveSupport::TestCase
     assert_no_difference Event, :count do
       u = Event.new(valid_event_attributes.merge(:start_time => Time.now, :end_time => 1.week.ago))
       u.save
-      assert u.errors[:start_time]
+      assert u.errors.on(:start_time)
     end    
   end
 

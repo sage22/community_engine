@@ -1,5 +1,5 @@
 class ModeratorsController < BaseController
-  before_filter :admin_required
+  before_filter :login_required
   
   def create
     @forum = Forum.find(params[:forum_id])
@@ -19,5 +19,8 @@ class ModeratorsController < BaseController
     end
   end
 
-
+  #overide in your app
+  def authorized?
+    current_user.admin?
+  end
 end

@@ -13,7 +13,7 @@
   <%= :post_found.l(:count => @posts.size) %>
 </p>
 
-<% if @posts.total_count > 1 -%>
+<% if @posts.page_count > 1 -%>
 <div class="pagination"><%= "#{:pages.l}:" %> <strong><%= paginating_links @posts %></strong></div>
 <% end -%>
 
@@ -27,9 +27,9 @@
 <tr class="post hentry" id="<%= post.dom_id %>">
   <td class="author vcard">
     <div class="date">
-      <abbr class="updated" title="<%= post.created_at.xmlschema %>">
+      <abbr class="updated" title="<%= post.created_at %>">
       <% if post.created_at > Time.now.utc-24.hours%>
-      <%= time_ago_in_words(post.created_at).sub(/about /, '') %> ago
+      <%= time_ago_in_words(post.created_at) %> ago
       <% else %>
       <%= post.created_at.strftime("%b %e, %Y")%>
       <% end %>
@@ -50,6 +50,10 @@
 <% end %>
 </table>
 
-<% if @posts.total_count > 1 -%>
+<% if @posts and @posts.next_page %>
+<p style="float:right;"><%= link_to :next_page.l, { :page => @posts.next_page }.merge(params.reject{|k,v| k=="page"})  %></p>
+<% end %>
+
+<% if @posts.page_count > 1 -%>
 <div class="pagination"><%= :pages.l %> <strong><%= paginating_links @posts %></strong></div>
 <% end -%>

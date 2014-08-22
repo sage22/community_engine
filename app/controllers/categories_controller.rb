@@ -1,8 +1,6 @@
 class CategoriesController < BaseController
   before_filter :login_required, :except => [:show, :most_viewed, :rss]
   before_filter :admin_required, :only => [:new, :edit, :update, :create, :destroy, :index]
-
-  cache_sweeper :category_sweeper, :only => [:create, :update, :destroy]
   
   # GET /categories
   # GET /categories.xml
@@ -20,15 +18,18 @@ class CategoriesController < BaseController
   def show
     @category = Category.find(params[:id])
     @sidebar_right = true
-      
+    
+    cond = Caboose::EZ::Condition.new
+    cond.category_id  == @category.id
     order = (params[:popular] ? "view_count #{params[:popular].eql?('DESC') ? 'DESC' : 'ASC'}": "published_at DESC")
 
-    @posts = Post.includes(:tags).where('category_id = ?', @category.id).order(order).page(params[:page])
+    @posts = Post.find :all, :page => {:current => params[:page]}, :order => order, :conditions => cond.to_sql, :include => :tags
     
-    @popular_posts = @category.posts.order("view_count DESC").find(:all, :limit => 10)
+    
+    @popular_posts = @category.posts.find(:all, :limit => 10, :order => "view_count DESC")
     @popular_polls = Poll.find_popular_in_category(@category)
 
-    @rss_title = "#{configatron.community_name}: #{@category.name} "+:posts.l
+    @rss_title = "#{AppConfig.community_name}: #{@category.name} " + :posts.l
     @rss_url = category_path(@category, :format => :rss)
 
     @active_users = User.find(:all,
@@ -41,7 +42,7 @@ class CategoriesController < BaseController
     respond_to do |format|
       format.html # show.rhtml
       format.rss {
-        render_rss_feed_for(@posts, {:feed => {:title => "#{configatron.community_name}: #{@category.name} "+:posts.l, :link => category_url(@category)},
+        render_rss_feed_for(@posts, {:feed => {:title => "#{AppConfig.community_name}: #{@category.name} "+:posts.l, :link => category_url(@category)},
           :item => {:title => :title,
                     :link =>  Proc.new {|post| user_post_url(post.user, post)},
                     :description => :post,

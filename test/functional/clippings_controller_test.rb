@@ -1,7 +1,7 @@
-require 'test_helper'
+require File.dirname(__FILE__) + '/../test_helper'
 
 class ClippingsControllerTest < ActionController::TestCase
-  fixtures :all
+  fixtures :clippings, :users, :roles
 
   def setup
     Asset.destroy_all    
@@ -39,19 +39,6 @@ class ClippingsControllerTest < ActionController::TestCase
     assert_response :success
     assert !assigns(:clippings).empty?
   end
-  
-  test "should get site index with recent param" do
-    get :site_index, :recent => 'true'
-    assert_response :success    
-    assert_select 'a[href*=/clippings]'
-  end
-
-  test "should get site index without recent param" do
-    get :site_index
-    assert_response :success
-    assert_select 'a[href*=/clippings?recent=true]'
-  end
-
 
   def test_should_get_site_index_rss
     get :site_index, :format => 'rss'
@@ -86,11 +73,6 @@ class ClippingsControllerTest < ActionController::TestCase
     assert_response :success
     assert !assigns(@images).empty?
   end
-  
-  def test_load_images_from_uri
-    post :load_images_from_uri, :uri => 'http://www.google.com', :format => :js
-    assert_response :success
-  end
 
 
   def test_should_show_clipping
@@ -107,8 +89,9 @@ class ClippingsControllerTest < ActionController::TestCase
   
   def test_should_update_clipping
     login_as :quentin
-    put :update, :id => 1,
-      :clipping => {:url => 'changed url'},
+    put :update, 
+      :id => 1,
+      :clipping => {:url => 'changed url' },
       :user_id => users(:quentin),
       :tag_list => 'tagX, tagY'
     assert_redirected_to user_clipping_path(users(:quentin), assigns(:clipping))

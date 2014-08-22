@@ -1,16 +1,16 @@
-require 'test_helper'
+require File.dirname(__FILE__) + '/../test_helper'
 
-class SessionsControllerTest < ActionController::TestCase
-  fixtures :all
+class SessionsControllerTest < ActionController::TestCase  
+  fixtures :users, :roles
 
   def test_should_login_and_redirect
-    post :create, :email => 'quentin@example.com', :password => 'test'
+    post :create, :login => 'quentin', :password => 'test'
     assert_equal users(:quentin), UserSession.find.record
     assert_response :redirect
   end
 
   def test_should_fail_login_and_not_redirect
-    post :create, :email => 'quentin@example.com', :password => 'bad password'
+    post :create, :login => 'quentin', :password => 'bad password'
     assert_nil UserSession.find
     assert_response :success
   end
@@ -22,6 +22,18 @@ class SessionsControllerTest < ActionController::TestCase
     assert_response :redirect
   end
 
+  def test_should_remember_me
+    post :create, :login => 'quentin', :password => 'test', :remember_me => "1"
+    parsed_cookie = CGI::Cookie.parse(@response.header["Set-Cookie"][0])
+    assert parsed_cookie.has_key?('expires')
+  end
+
+  def test_should_not_remember_me
+    post :create, :login => 'quentin', :password => 'test', :remember_me => "0"
+    parsed_cookie = CGI::Cookie.parse(@response.header["Set-Cookie"][0])
+    assert !parsed_cookie.has_key?('expires')
+  end
+  
   def test_should_delete_token_on_logout
     login_as :quentin
     get :destroy
@@ -42,28 +54,14 @@ class SessionsControllerTest < ActionController::TestCase
     @request.cookies["user_credentials"] = {:value => {:value => 'invalid_token'}, :expires => nil}
     assert !@controller.send(:logged_in?)
   end
-
+  
   def test_should_login_with_reset_password
     quentin = users(:quentin)
     quentin.reset_password
     newpass = quentin.password
     quentin.save_without_session_maintenance
-    post :create, :email => 'quentin@example.com', :password => newpass
+    post :create, :login => 'quentin', :password => newpass
     assert_equal users(:quentin), UserSession.find.record
   end
 
-  test 'should login and not store location' do
-    return_to = session[:return_to]
-    post :create, :email => 'quentin@example.com', :password => 'test'
-    assert_equal return_to, session[:return_to]
-  end
-
-  test 'should logout and destroy session' do
-    login_as :quentin
-    assert !session.empty?
-    get :destroy
-    assert session.empty?
-  end
-
 end
-

@@ -1,6 +1,6 @@
 class Clipping < ActiveRecord::Base
 
-  acts_as_moderated_commentable
+  acts_as_commentable
   belongs_to :user
   validates_presence_of :user
   validates_presence_of :url
@@ -10,49 +10,47 @@ class Clipping < ActiveRecord::Base
   validates_associated :image
   validates_presence_of :image
   after_save :save_image
-
-  has_one  :image, :as => :attachable, :class_name => "ClippingImage", :dependent => :destroy
+  
+  has_one  :image, :as => :attachable, :dependent => :destroy, :class_name => "ClippingImage"  
   has_many :favorites, :as => :favoritable, :dependent => :destroy
-
+  
   acts_as_taggable
   acts_as_activity :user
-
-  attr_accessible :user, :url, :description, :image_url
-
-  scope :recent, :order => 'clippings.created_at DESC'
-
-
+    
+  named_scope :recent, :order => 'clippings.created_at DESC'    
+  named_scope :tagged_with, lambda {|tag_name|
+    {:conditions => ["tags.name = ?", tag_name], :include => :tags}
+  }
+    
+    
   def self.find_related_to(clipping, options = {})
-    options.reverse_merge!({:limit => 8,
+    merged_options = options.merge({:limit => 8, 
         :order => 'created_at DESC',
         :conditions => [ 'clippings.id != ?', clipping.id ]
     })
 
-    limit(options[:limit]).
-      order(options[:order]).
-      where(options[:conditions]).
-      tagged_with(clipping.tags.collect{|t| t.name }, :any => true)
+    find_tagged_with(clipping.tags.collect{|t| t.name }, merged_options).uniq
   end
 
   def self.find_recent(options = {:limit => 5})
-    find(:all, :conditions => "created_at > '#{7.days.ago.iso8601}'", :order => "created_at DESC", :limit => options[:limit])
+    find(:all, :conditions => "created_at > '#{7.days.ago.to_s :db}'", :order => "created_at DESC", :limit => options[:limit])
   end
 
   def previous_clipping
-    self.user.clippings.order('created_at DESC').where('created_at < ?', self.created_at).first
+    self.user.clippings.find(:first, :conditions => ['created_at < ?', self.created_at], :order => 'created_at DESC')
   end
   def next_clipping
-    self.user.clippings.where('created_at > ?', self.created_at).order('created_at ASC').first
+    self.user.clippings.find(:first, :conditions => ['created_at > ?', self.created_at], :order => 'created_at ASC')
   end
 
   def owner
     self.user
   end
-
+  
   def image_uri(size = '')
-    image && image.asset.url(size) || image_url
+    image && image.public_filename(size) || image_url
   end
-
+  
   def title_for_rss
     description.empty? ? created_at.to_formatted_s(:long) : description
   end
@@ -61,18 +59,17 @@ class Clipping < ActiveRecord::Base
     f = Favorite.find_by_user_or_ip_address(self, user, remote_ip)
     return f
   end
-
+  
   def add_image
     begin
-      clipping_image = ClippingImage.new
-      uploaded_data = clipping_image.data_from_url(self.image_url)
-      clipping_image.asset = uploaded_data
-      self.image = clipping_image
+      self.image = ClippingImage.new
+      uploaded_data = self.image.data_from_url(self.image_url)
+      self.image.uploaded_data = uploaded_data
     rescue
       nil
     end
   end
-
+  
   def save_image
     if valid? && image
       image.attachable = self

@@ -1,40 +1,26 @@
-# Configure Rails Envinronment
 ENV["RAILS_ENV"] = "test"
-
-require File.expand_path("../testapp/config/environment",  __FILE__)
-require "rails/test_help"
-
-ActionMailer::Base.delivery_method = :test
-ActionMailer::Base.perform_deliveries = true
-ActionMailer::Base.default_url_options[:host] = "test.com"
-
-Rails.backtrace_cleaner.remove_silencers!
-
+require File.expand_path(File.dirname(__FILE__) + "/../../../../config/environment")
+require 'test_help'
 require "authlogic/test_case"
-require "community_engine/authenticated_test_helper"
-require "mocha/setup"
-
-ActiveSupport::TestCase.fixture_path = (Rails.root + "../fixtures").to_s #we want a string here, not a Pathname
+require 'action_view/test_case'
+require 'pp'
+ActiveSupport::TestCase.fixture_path = (RAILS_ROOT + "/vendor/plugins/community_engine/test/fixtures/")
 ActionController::IntegrationTest.fixture_path = ActiveSupport::TestCase.fixture_path
+
 
 class ActionController::TestCase
   setup :activate_authlogic
 end
 
-class ActiveSupport::TestCase
-  setup :activate_authlogic
+class ActiveSupport::TestCase    
   include AuthenticatedTestHelper
-  include ActionDispatch::TestProcess
-
-  set_fixture_class :tags => ActsAsTaggableOn::Tag, :taggings => ActsAsTaggableOn::Tagging
-
+  
   def self.all_fixtures
-    # fixtures :forums, :users, :sb_posts, :topics, :moderatorships, :monitorships, :categories
     fixtures :all
-  end
-
+  end  
+  
   def teardown
-    UserSession.find && UserSession.find.destroy
+    # UserSession.find && UserSession.find.destroy
   end
 
   # Add more helper methods to be used by all tests here...
@@ -46,16 +32,10 @@ class ActiveSupport::TestCase
 
   def assert_no_difference(object, method, &block)
     assert_difference object, method, 0, &block
-  end
-
-  def login_as(user)
-    UserSession.create(users(user))
-  end
-
+  end 
+  
   def authorize_as(user, mime_type = 'application/xml')
-    @request.env["HTTP_AUTHORIZATION"] = user ? "Basic #{Base64.encode64("#{users(user).login}:test")}" : nil
-    accept       mime_type
-    content_type mime_type
+    @request.env["HTTP_AUTHORIZATION"] = user ? "Basic #{Base64.encode64("#{users(user).login}:testy")}" : nil
   end
 
   def content_type(type)
@@ -66,6 +46,14 @@ class ActiveSupport::TestCase
     @request.env["HTTP_ACCEPT"] = accept
   end
 
+  def assert_models_equal(expected_models, actual_models, message = nil)
+    #gross
+    to_test_param = lambda { |r| "<#{r.class}:#{r.to_param}>" }
+    full_message = build_message(message, "<?> expected but was\n<?>.\n", 
+      expected_models.collect(&to_test_param), actual_models.collect(&to_test_param))
+    assert_block(full_message) { (expected_models == actual_models || expected_models == actual_models.results) }
+  end
+  
   def assert_js_redirected_to(options={}, message=nil)
     clean_backtrace do
       assert_response(:success, message)
@@ -85,21 +73,37 @@ class ActiveSupport::TestCase
       end
     end
   end
-
+   
 end
 
-# Redefining this so we don't have to go out to the interwebs everytime we create a clipping in a test
+# Redefining this so we don't have to go out to the interwebs everytime we create a clipping
 # file paramater must equal http://www.google.com/intl/en_ALL/images/logo.gif; all other strings are considered an invalid URL
 module UrlUpload
-  include ActionDispatch::TestProcess
-  attr_accessor :data
-
+  include ActionController::TestProcess  
+  attr_accessor :data 
+  
   def data_from_url(uri)
-    data ||= Rack::Test::UploadedFile.new("#{File.dirname(__FILE__)}/fixtures/files/library.jpg", 'image/jpg', false)
+    data ||= ActionController::TestUploadedFile.new(RAILS_ROOT+"/vendor/plugins/community_engine/test/fixtures/files/library.jpg", 'image/jpg', false)    
     if ['http://www.google.com/intl/en_ALL/images/logo.gif', 'http://us.i1.yimg.com/us.yimg.com/i/ww/beta/y3.gif'].include?(uri)
       data
     else
       nil
     end
+  end      
+end
+
+class Hash
+  # Usage { :a => 1, :b => 2, :c => 3}.except(:a) -> { :b => 2, :c => 3}
+  def except(*keys)
+    self.reject { |k,v|
+      keys.include? k.to_sym
+    }
+  end
+
+  # Usage { :a => 1, :b => 2, :c => 3}.only(:a) -> {:a => 1}
+  def only(*keys)
+    self.dup.reject { |k,v|
+      !keys.include? k.to_sym
+    }
   end
 end

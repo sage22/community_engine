@@ -1,13 +1,8 @@
-require 'test_helper'
+require File.dirname(__FILE__) + '/../test_helper'
 
 class FriendshipsControllerTest < ActionController::TestCase
   include UsersHelper
   fixtures :friendships, :friendship_statuses, :users, :roles
-
-  test "should get index" do
-    get :index
-    assert_response :success
-  end
 
   def test_should_get_accepted_friends_list
     login_as :quentin

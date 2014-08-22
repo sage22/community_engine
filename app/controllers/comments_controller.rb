@@ -1,18 +1,20 @@
 class CommentsController < BaseController
+  helper :comments
   before_filter :login_required, :except => [:index, :unsubscribe]
-  before_filter :admin_or_moderator_required, :only => [:delete_selected, :edit, :update, :approve, :disapprove]
+  before_filter :admin_or_moderator_required, :only => [:delete_selected, :edit, :update]
 
-  if configatron.allow_anonymous_commenting
+  if AppConfig.allow_anonymous_commenting
     skip_before_filter :verify_authenticity_token, :only => [:create]   #because the auth token might be cached anyway
     skip_before_filter :login_required, :only => [:create]
   end
 
-  uses_tiny_mce do
-    {:only => [:index, :edit, :update], :options => configatron.simple_mce_options}
+  uses_tiny_mce(:only => [:index, :edit, :update]) do
+    AppConfig.simple_mce_options
   end
 
   cache_sweeper :comment_sweeper, :only => [:create, :destroy]
 
+  
   def edit
     @comment = Comment.find(params[:id])
     respond_to do |format|
@@ -22,98 +24,99 @@ class CommentsController < BaseController
 
   def update
     @comment = Comment.find(params[:id])
-    @comment.update_attributes(params[:comment])
-    respond_to do |format|
-      format.js
-    end
-  end
-
-  def approve
-    @comment = Comment.find(params[:id])
-    @comment.ham! if !configatron.akismet_key.nil?
-    @comment.role = 'published'
+    @comment.update_attributes(params[:comment])    
     @comment.save!
     respond_to do |format|
       format.js
-    end
+    end    
   end
 
+
   def index
-    commentable_type = get_commentable_type(params[:commentable_type])
-    commentable_class = commentable_type.singularize.constantize
-    commentable_type_humanized = commentable_type.humanize
-    commentable_type_tableized = commentable_type.tableize
+    if is_valid_comment_type?(comment_type)
+      @commentable = comment_type.constantize.find(comment_id)      
+    else
+      redirect_to home_path and return
+    end
 
-    if @commentable = commentable_class.find(params[:commentable_id])
-      unless logged_in? || (@commentable.owner && @commentable.owner.profile_public?)
-        flash.now[:error] = :private_user_profile_message.l
-        redirect_to login_path and return
-      end
+    #don't use the get_type, as we want the specific case where the user typed /User/username/comments
+    redirect_to user_comments_path(params[:commentable_id]) and return if (params[:commentable_type] && params[:commentable_type].camelize == "User")    
+      
+    unless logged_in? || @commentable && (!@commentable.owner.nil? && @commentable.owner.profile_public?)
+      flash.now[:error] = :this_users_profile_is_not_public_youll_need_to_create_an_account_and_log_in_to_access_it.l
+      redirect_to :controller => 'sessions', :action => 'new' and return
+    end
 
-      @comments = @commentable.comments.recent.page(params[:page])
-      @title = commentable_type_humanized
-      @rss_url = commentable_comments_url(commentable_type_tableized, @commentable, :format => :rss)
+    if @commentable
 
-      if @comments.any?
-        first_comment = @comments.first
-        @user = first_comment.recipient
-        @title = first_comment.commentable_name
-        @back_url = commentable_url(first_comment)
-        respond_to do |format|
-          @rss_title = "#{configatron.community_name}: #{commentable_type_humanized} Comments - #{@title}"
-          format.html
-          format.rss {
-            render_comments_rss_feed_for(@comments, @commentable, @rss_title) and return
-          }
-        end
-      else
-        if @commentable.is_a?(User)
+      @comments = @commentable.comments.recent.find(:all, :page => {:size => 10, :current => params[:page]})
+
+      if @comments.to_a.empty?
+
+        render :text => :no_comments_found.l_with_args(:type => comment_type.constantize) and return unless (comment_type == "User" || @commentable.user_id)
+        
+        if comment_type == "User"
           @user = @commentable
           @title = @user.login
           @back_url = user_path(@user)
-        elsif @user = @commentable.user
-          @title = @commentable.respond_to?(:title) ? @commentable.title : @title
-          @back_url = url_for([@user, @commentable])
+        else comment_type != "User" 
+          @user = @commentable.user
+          @title = comment_title
+          @back_url = url_for([@user, @commentable].compact)
         end
 
-        respond_to do |format|
-          format.html
-          format.rss {
-            @rss_title = "#{configatron.community_name}: #{commentable_type_humanized} Comments - #{@title}"
-            render_comments_rss_feed_for([], @commentable, @rss_title) and return
-          }
-        end
+      else
+        @user = @comments.first.recipient
+        @title = comment_title
+        @back_url = commentable_url(@comments.first)
       end
-    else
-      flash[:notice] = :no_comments_found.l_with_args(:type => commentable_type_humanized)
-      redirect_to home_path
+      
+      respond_to do |format|
+        format.html {
+          render :action => 'index' and return
+        }
+        format.rss {
+          @rss_title = "#{AppConfig.community_name}: #{@commentable.class.to_s.underscore.capitalize} Comments - #{@title}"
+          @rss_url = comment_rss_link
+          render_comments_rss_feed_for(@comments, @title) and return
+        }
+      end      
+    end
+
+    respond_to do |format|
+      format.html {
+        flash[:notice] = :no_comments_found.l_with_args(:type => comment_type.constantize)
+        redirect_to :controller => 'base', :action => 'site_index' and return
+      }
     end
   end
 
   def new
-    @commentable = get_commentable_type(params[:commentable_type]).constantize.find(params[:commentable_id])
-    redirect_to commentable_comments_url(@commentable.class.to_s.tableize, @commentable.id)
+    @commentable = comment_type.constantize.find(comment_id)
+    redirect_to commentable_comments_url(@commentable)
   end
 
 
   def create
-    commentable_type = get_commentable_type(params[:commentable_type])
-    @commentable = commentable_type.singularize.constantize.find(params[:commentable_id])
+    @commentable = comment_type.constantize.find(comment_id)
 
-    @comment = @commentable.comments.new(params[:comment])
+    @comment = Comment.new(params[:comment])
 
+    @comment.commentable = @commentable
     @comment.recipient = @commentable.owner
     @comment.user_id = current_user.id if current_user
     @comment.author_ip = request.remote_ip #save the ip address for everyone, just because
 
     respond_to do |format|
       if (logged_in? || verify_recaptcha(@comment)) && @comment.save
+        @comment.send_notifications
+
         flash.now[:notice] = :comment_was_successfully_created.l
         format.html { redirect_to commentable_url(@comment) }
         format.js
       else
         flash.now[:error] = :comment_save_error.l_with_args(:error => @comment.errors.full_messages.to_sentence)
-        format.html { redirect_to commentable_comments_path(commentable_type.tableize, @commentable) }
+        format.html { redirect_to :controller => comment_type.underscore.pluralize, :action => 'show', :id => comment_id }
         format.js
       end
     end
@@ -122,7 +125,7 @@ class CommentsController < BaseController
   def destroy
     @comment = Comment.find(params[:id])
     if @comment.can_be_deleted_by(current_user) && @comment.destroy
-      if params[:spam] && !configatron.akismet_key.nil?
+      if params[:spam] && AppConfig.akismet_key
         @comment.spam!
       end
       flash.now[:notice] = :the_comment_was_deleted.l
@@ -137,24 +140,23 @@ class CommentsController < BaseController
       }
     end
   end
-
+  
   def delete_selected
     if request.post?
       if params[:delete]
         params[:delete].each { |id|
           comment = Comment.find(id)
-          comment.spam! if params[:spam] && !configatron.akismet_key.nil?
+          comment.spam! if params[:spam] && AppConfig.akismet_key          
           comment.destroy if comment.can_be_deleted_by(current_user)
         }
       end
-      flash[:notice] = :comments_deleted.l
+      flash[:notice] = :comments_deleted.l                
       redirect_to admin_comments_path
     end
-  end
-
-
+  end  
+  
   def unsubscribe
-    @comment = Comment.find(params[:id])
+    @comment = Comment.find(params[:comment_id])
     if @comment.token_for(params[:email]).eql?(params[:token])
       @comment.unsubscribe_notifications(params[:email])
       flash[:notice] = :comment_unsubscribe_succeeded.l
@@ -164,16 +166,57 @@ class CommentsController < BaseController
 
 
   private
-
-    def get_commentable_type(string)
-      string.camelize
+    
+    def comment_type
+      return "User" unless params[:commentable_type]
+      params[:commentable_type].camelize
     end
-
-    def render_comments_rss_feed_for(comments, commentable, title)
+    
+    def is_valid_comment_type?(type)
+      tables = ActiveRecord::Base.connection.tables
+      models = tables.collect(&:classify)
+      models.include?(type)
+    end
+  
+    def comment_id
+      params[:commentable_id] || params[:user_id]
+    end
+  
+    def comment_link
+      params[:commentable_id] ? comments_path(@commentable.class.to_s.underscore, @commentable.id) : user_comments_path(@user)
+    end
+  
+    def full_comment_link
+      "#{home_url}#{comment_link}"
+    end
+  
+    def comment_rss_link
+      params[:commentable_id] ? comments_path(@commentable.class.to_s.underscore, @commentable.id, :format => :rss) : user_comments_path(@user, :format => :rss)
+    end
+  
+    def comment_title
+      return @comments.first.commentable_name if @comments.first
+  
+      type = comment_type.underscore
+      case type
+        when 'user'
+          @commentable.login
+        when 'post'
+          @commentable.title
+        when 'clipping'
+          @commentable.description || :clipping_from_user.l(:user => @user.login)
+        when 'photo'
+          @commentable.description || :photo_from_user.l(:user => @user.login)
+        else 
+          @commentable.class.to_s.humanize
+      end  
+    end
+  
+    def render_comments_rss_feed_for(comments, title)
       render_rss_feed_for(comments,
-        { :class => commentable.class,
+        { :class => @commentable.class,
           :feed => {  :title => title,
-                      :link => commentable_comments_url(commentable.class.to_s.tableize, commentable) },
+                      :link => full_comment_link },
           :item => { :title => :title_for_rss,
                      :description => :comment,
                      :link => Proc.new {|comment| commentable_url(comment)},
@@ -181,5 +224,5 @@ class CommentsController < BaseController
                      }
         })
     end
-
+  
 end

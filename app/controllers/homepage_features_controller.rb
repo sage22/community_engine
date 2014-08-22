@@ -1,36 +1,46 @@
 class HomepageFeaturesController < BaseController
-  uses_tiny_mce do
-    {:only => [:new, :edit, :create, :update ], :options => configatron.default_mce_options}
+  uses_tiny_mce(:only => [:new, :edit, :create, :update ]) do
+    AppConfig.default_mce_options
   end
 
   before_filter :login_required
   before_filter :admin_required
-
+  # GET /homepage_features
+  # GET /homepage_features.xml
   def index
+    
     @search = HomepageFeature.search(params[:search])
-    @search.meta_sort ||= 'created_at.desc'    
-    @homepage_features = @search.page(params[:page]).per(100)
+    @search.order ||= :descend_by_created_at
+    
+    @homepage_features = @search.find(:all, :conditions => ["parent_id IS NULL"], :page => {:current => params[:page], :size => 100})    
+    
     respond_to do |format|
-      format.html
+      format.html # index.rhtml
     end
   end
   
+  # GET /homepage_features/1
+  # GET /homepage_features/1.xml
   def show
     @homepage_feature = HomepageFeature.find(params[:id])
     
     respond_to do |format|
-      format.html 
+      format.html # show.rhtml
     end
   end
   
+  # GET /homepage_features/new
   def new
     @homepage_feature = HomepageFeature.new
   end
   
+  # GET /homepage_features/1;edit
   def edit
     @homepage_feature = HomepageFeature.find(params[:id])
   end
 
+  # POST /homepage_features
+  # POST /homepage_features.xml
   def create
     @homepage_feature = HomepageFeature.new(params[:homepage_feature])
     
@@ -45,6 +55,8 @@ class HomepageFeaturesController < BaseController
     end
   end
   
+  # PUT /homepage_features/1
+  # PUT /homepage_features/1.xml
   def update
     @homepage_feature = HomepageFeature.find(params[:id])
     
@@ -57,6 +69,8 @@ class HomepageFeaturesController < BaseController
     end
   end
   
+  # DELETE /homepage_features/1
+  # DELETE /homepage_features/1.xml
   def destroy
     @homepage_feature = HomepageFeature.find(params[:id])
     @homepage_feature.destroy
